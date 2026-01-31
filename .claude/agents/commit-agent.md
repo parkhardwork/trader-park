@@ -46,14 +46,15 @@ footer
 
 ### Subject 규칙
 - 50자 이내
-- 첫 글자 대문자
+- **한글로 작성**
 - 마침표 없음
-- 명령형 사용 (Add, Fix, Update 등)
+- 명령형 사용 (추가, 수정, 개선, 삭제 등)
 
 ### Body 규칙 (선택)
 - Header와 빈 줄로 구분
 - 72자에서 줄바꿈
-- **what**과 **why** 설명
+- **무엇을**, **왜** 변경했는지 설명
+- **한글로 작성**
 
 ### Footer 규칙 (선택)
 - 이슈 참조: `Issues #1234`
@@ -64,13 +65,24 @@ footer
 HEREDOC을 사용하여 커밋:
 ```bash
 git commit -m "$(cat <<'EOF'
-type(scope): Subject
+type(scope): 변경 내용 요약
 
-Body description here.
+변경 사항에 대한 상세 설명을 한글로 작성합니다.
 
 Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 EOF
 )"
+```
+
+### 커밋 메시지 예시
+```
+feat(auth): 카카오 로그인 기능 추가
+
+OAuth2.0 기반 카카오 로그인을 구현했습니다.
+- Spring Security OAuth2 Client 설정
+- 카카오 사용자 정보 매핑
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 ```
 
 ## 주의사항
