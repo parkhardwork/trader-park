@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>주식기본정보요청 (ka10001)</title>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #1a1a2e;
+            color: #eee;
+        }
+        h1 {
+            color: #00d4ff;
+            border-bottom: 2px solid #00d4ff;
+            padding-bottom: 10px;
+        }
+        .section {
+            background-color: #16213e;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .section h2 {
+            color: #00d4ff;
+            margin-top: 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #00d4ff;
+        }
+        input {
+            padding: 10px;
+            border: 1px solid #333;
+            border-radius: 5px;
+            background-color: #0f0f23;
+            color: #eee;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button {
+            background-color: #00d4ff;
+            color: #1a1a2e;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #00a8cc;
+        }
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #333;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #0f3460;
+            color: #00d4ff;
+        }
+        tr:nth-child(even) {
+            background-color: #1a1a2e;
+        }
+        tr:hover {
+            background-color: #0f3460;
+        }
+        #result {
+            min-height: 100px;
+        }
+        .loading {
+            text-align: center;
+            color: #888;
+            padding: 40px;
+        }
+        .error {
+            background-color: #ff475733;
+            border: 1px solid #ff4757;
+            border-radius: 5px;
+            padding: 15px;
+            color: #ff6b7a;
+        }
+        .key {
+            width: 220px;
+            color: #00d4ff;
+        }
+    </style>
+</head>
+<body>
+    <h1>📊 주식기본정보요청 (ka10001)</h1>
+
+    <div class="section">
+        <h2>조회 설정</h2>
+        <div>
+            <label for="stkCd">종목코드</label>
+            <input type="text" id="stkCd" placeholder="005930" maxlength="20" value="005930">
+            <button onclick="fetchData()">조회</button>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>📋 응답 데이터</h2>
+        <div id="result">
+            <div class="loading">조회 버튼을 클릭하세요</div>
+        </div>
+    </div>
+
+    <script>
+        const HOST = 'https://api.kiwoom.com'; // 실전투자
+        const APP_KEY = 'S0pnAkH0NIhvkRqlSbTa2j0y42ikEw6x26UKpAoZouQ';
+        const SECRET_KEY = 'h6wV7B6PJeDa_hv7HFuKbtvaOzwIKU-gtoQXEzyxm68';
+
+        // 접근토큰 발급
+        async function getAccessToken() {
+            const url = HOST + '/oauth2/token';
+            const body = {
+                'grant_type': 'client_credentials',
+                'appkey': APP_KEY,
+                'secretkey': SECRET_KEY,
+            };
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+                body: JSON.stringify(body)
+            });
+
+            const data = await response.json();
+            console.log('토큰 발급:', data);
+            return data.token;
+        }
+
+        // 주식기본정보요청 (ka10001)
+        async function fn_ka10001(accessToken, stkCd) {
+            const url = HOST + '/api/dostk/stkinfo';
+
+            const headers = {
+                'Content-Type': 'application/json;charset=UTF-8',
+                'authorization': `Bearer ${accessToken}`,
+                'api-id': 'ka10001',
+            };
+
+            const body = {
+                'stk_cd': stkCd,
+            };
+
+            console.log('요청:', { url, headers: { ...headers, authorization: 'Bearer ***' }, body });
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(body)
+            });
+
+            const responseBody = await response.json();
+            console.log('주식기본정보 응답:', JSON.stringify(responseBody, null, 2));
+            return responseBody;
+        }
+
+        // 데이터 조회 및 렌더링
+        async function fetchData() {
+            const stkCd = document.getElementById('stkCd').value.trim();
+            const resultDiv = document.getElementById('result');
+
+            if (!stkCd) {
+                alert('종목코드를 입력하세요');
+                return;
+            }
+
+            resultDiv.innerHTML = '<div class="loading">조회 중...</div>';
+
+            try {
+                // 1. 토큰 발급
+                const accessToken = await getAccessToken();
+                if (!accessToken) {
+                    throw new Error('토큰 발급 실패');
+                }
+
+                // 2. 주식기본정보 조회
+                const data = await fn_ka10001(accessToken, stkCd);
+
+                if (data.return_code !== 0) {
+                    throw new Error(`API 오류: ${data.return_msg || '알 수 없는 오류'}`);
+                }
+
+                // 3. 응답 렌더링
+                renderTable(data);
+
+            } catch (error) {
+                console.error('조회 실패:', error);
+                resultDiv.innerHTML = `<div class="error">조회 실패: ${error.message}</div>`;
+            }
+        }
+
+        // 응답 테이블 렌더링
+        function renderTable(data) {
+            const resultDiv = document.getElementById('result');
+            const orderedKeys = [
+                ['stk_cd', '종목코드'],
+                ['stk_nm', '종목명'],
+                ['setl_mm', '결산월'],
+                ['fav', '액면가'],
+                ['cap', '자본금'],
+                ['flo_stk', '상장주식수'],
+                ['crd_rt', '신용비율'],
+                ['oyr_hgst', '연중최고'],
+                ['oyr_lwst', '연중최저'],
+                ['mac', '시가총액'],
+                ['mac_wght', '시가총액비중'],
+                ['for_exh_rt', '외인소진률'],
+                ['repl_pric', '대용가'],
+                ['per', 'PER'],
+                ['eps', 'EPS'],
+                ['roe', 'ROE'],
+                ['pbr', 'PBR'],
+                ['ev', 'EV'],
+                ['bps', 'BPS'],
+                ['return_code', '응답코드'],
+                ['return_msg', '응답메시지'],
+            ];
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>항목</th>
+                            <th>값</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            const used = new Set();
+            orderedKeys.forEach(([key, label]) => {
+                if (key in data) {
+                    used.add(key);
+                    html += `
+                        <tr>
+                            <td class="key">${label}</td>
+                            <td>${data[key] || '-'}</td>
+                        </tr>
+                    `;
+                }
+            });
+
+            Object.keys(data).forEach((key) => {
+                if (used.has(key)) return;
+                html += `
+                    <tr>
+                        <td class="key">${key}</td>
+                        <td>${data[key] || '-'}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            resultDiv.innerHTML = html;
+        }
+
+        // Enter 키로 조회
+        document.getElementById('stkCd').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                fetchData();
+            }
+        });
+    </script>
+</body>
+</html>

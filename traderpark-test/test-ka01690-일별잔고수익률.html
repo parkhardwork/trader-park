@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>일별잔고수익률 조회 (ka01690)</title>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #1a1a2e;
+            color: #eee;
+        }
+        h1 {
+            color: #00d4ff;
+            border-bottom: 2px solid #00d4ff;
+            padding-bottom: 10px;
+        }
+        .section {
+            background-color: #16213e;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .section h2 {
+            color: #00d4ff;
+            margin-top: 0;
+        }
+        .warning {
+            background-color: #ff475733;
+            border: 1px solid #ff4757;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 15px;
+            color: #ff6b7a;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #00d4ff;
+        }
+        input {
+            padding: 10px;
+            border: 1px solid #333;
+            border-radius: 5px;
+            background-color: #0f0f23;
+            color: #eee;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button {
+            background-color: #00d4ff;
+            color: #1a1a2e;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #00a8cc;
+        }
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .summary-card {
+            background-color: #0f3460;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+        .summary-card .label {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 5px;
+        }
+        .summary-card .value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #00d4ff;
+        }
+        .summary-card .value.positive {
+            color: #ff4757;
+        }
+        .summary-card .value.negative {
+            color: #3498db;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #333;
+            padding: 10px;
+            text-align: right;
+        }
+        th {
+            background-color: #0f3460;
+            color: #00d4ff;
+            text-align: center;
+        }
+        td:first-child, td:nth-child(2) {
+            text-align: left;
+        }
+        tr:nth-child(even) {
+            background-color: #1a1a2e;
+        }
+        tr:hover {
+            background-color: #0f3460;
+        }
+        .positive {
+            color: #ff4757;
+        }
+        .negative {
+            color: #3498db;
+        }
+        #result {
+            min-height: 100px;
+        }
+        .loading {
+            text-align: center;
+            color: #888;
+            padding: 40px;
+        }
+        .error {
+            background-color: #ff475733;
+            border: 1px solid #ff4757;
+            border-radius: 5px;
+            padding: 15px;
+            color: #ff6b7a;
+        }
+    </style>
+</head>
+<body>
+    <h1>📊 일별잔고수익률 조회 (ka01690)</h1>
+
+    <div class="section">
+        <h2>조회 설정</h2>
+        <div class="warning">
+            ⚠️ 이 API는 <strong>실전투자만 지원</strong>합니다. (모의투자 미지원)
+        </div>
+        <div>
+            <label for="qryDate">조회일자 (YYYYMMDD)</label>
+            <input type="text" id="qryDate" placeholder="20250131" maxlength="8">
+            <button onclick="fetchData()">조회</button>
+        </div>
+    </div>
+
+    <div class="section" id="summarySection" style="display: none;">
+        <h2>📈 계좌 요약</h2>
+        <div class="summary-grid" id="summaryGrid"></div>
+    </div>
+
+    <div class="section">
+        <h2>📋 종목별 잔고</h2>
+        <div id="result">
+            <div class="loading">조회 버튼을 클릭하세요</div>
+        </div>
+    </div>
+
+    <script>
+        const HOST = 'https://api.kiwoom.com'; // 실전투자만 지원
+        const APP_KEY = 'S0pnAkH0NIhvkRqlSbTa2j0y42ikEw6x26UKpAoZouQ';
+        const SECRET_KEY = 'h6wV7B6PJeDa_hv7HFuKbtvaOzwIKU-gtoQXEzyxm68';
+
+        // 오늘 날짜를 기본값으로 설정
+        document.getElementById('qryDate').value = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+
+        // 숫자 포맷팅 (천단위 콤마)
+        function formatNumber(num) {
+            if (!num) return '-';
+            const n = parseFloat(String(num).replace(/,/g, ''));
+            if (isNaN(n)) return num;
+            return n.toLocaleString('ko-KR');
+        }
+
+        // 금액 포맷팅 (억원 단위)
+        function formatAmount(num) {
+            if (!num) return '-';
+            const n = parseFloat(String(num).replace(/,/g, ''));
+            if (isNaN(n)) return num;
+            if (Math.abs(n) >= 100000000) {
+                return (n / 100000000).toFixed(2) + '억';
+            }
+            return n.toLocaleString('ko-KR');
+        }
+
+        // 수익률 클래스
+        function getProfitClass(value) {
+            if (!value) return '';
+            const n = parseFloat(String(value).replace(/,/g, ''));
+            if (n > 0) return 'positive';
+            if (n < 0) return 'negative';
+            return '';
+        }
+
+        // 접근토큰 발급
+        async function getAccessToken() {
+            const url = HOST + '/oauth2/token';
+            const body = {
+                'grant_type': 'client_credentials',
+                'appkey': APP_KEY,
+                'secretkey': SECRET_KEY,
+            };
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+                body: JSON.stringify(body)
+            });
+
+            const data = await response.json();
+            console.log('토큰 발급:', data);
+            return data.token;
+        }
+
+        // 일별잔고수익률 요청 (ka01690)
+        async function fn_ka01690(accessToken, qryDate) {
+            const url = HOST + '/api/dostk/acnt';
+
+            const headers = {
+                'Content-Type': 'application/json;charset=UTF-8',
+                'authorization': `Bearer ${accessToken}`,
+                'api-id': 'ka01690',
+            };
+
+            const body = {
+                'qry_dt': qryDate,
+            };
+
+            console.log('요청:', { url, headers: { ...headers, authorization: 'Bearer ***' }, body });
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(body)
+            });
+
+            const responseBody = await response.json();
+            console.log('일별잔고수익률 응답:', JSON.stringify(responseBody, null, 2));
+            return responseBody;
+        }
+
+        // 데이터 조회 및 렌더링
+        async function fetchData() {
+            const qryDate = document.getElementById('qryDate').value;
+            const resultDiv = document.getElementById('result');
+            const summarySection = document.getElementById('summarySection');
+
+            if (!qryDate || qryDate.length !== 8) {
+                alert('조회일자를 YYYYMMDD 형식으로 입력하세요');
+                return;
+            }
+
+            resultDiv.innerHTML = '<div class="loading">조회 중...</div>';
+            summarySection.style.display = 'none';
+
+            try {
+                // 1. 토큰 발급
+                const accessToken = await getAccessToken();
+                if (!accessToken) {
+                    throw new Error('토큰 발급 실패');
+                }
+
+                // 2. 일별잔고수익률 조회
+                const data = await fn_ka01690(accessToken, qryDate);
+
+                if (data.return_code !== 0) {
+                    throw new Error(`API 오류: ${data.return_msg || '알 수 없는 오류'}`);
+                }
+
+                // 3. 요약 정보 렌더링
+                renderSummary(data);
+
+                // 4. 종목 테이블 렌더링
+                renderTable(data.day_bal_rt || []);
+
+            } catch (error) {
+                console.error('조회 실패:', error);
+                resultDiv.innerHTML = `<div class="error">조회 실패: ${error.message}</div>`;
+            }
+        }
+
+        // 요약 정보 렌더링
+        function renderSummary(data) {
+            const summarySection = document.getElementById('summarySection');
+            const summaryGrid = document.getElementById('summaryGrid');
+
+            const profitClass = getProfitClass(data.tot_prft_rt);
+
+            summaryGrid.innerHTML = `
+                <div class="summary-card">
+                    <div class="label">조회일자</div>
+                    <div class="value">${data.dt || '-'}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">총 매입가</div>
+                    <div class="value">${formatAmount(data.tot_buy_amt)}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">총 평가금액</div>
+                    <div class="value">${formatAmount(data.tot_evlt_amt)}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">총 평가손익</div>
+                    <div class="value ${profitClass}">${formatAmount(data.tot_evltv_prft)}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">수익률</div>
+                    <div class="value ${profitClass}">${data.tot_prft_rt || '-'}%</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">예수금</div>
+                    <div class="value">${formatAmount(data.dbst_bal)}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">추정자산</div>
+                    <div class="value">${formatAmount(data.day_stk_asst)}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">현금비중</div>
+                    <div class="value">${data.buy_wght || '-'}%</div>
+                </div>
+            `;
+
+            summarySection.style.display = 'block';
+        }
+
+        // 종목 테이블 렌더링
+        function renderTable(items) {
+            const resultDiv = document.getElementById('result');
+            const normalized = (items || []).filter(item => {
+                if (!item || typeof item !== 'object') return false;
+                return Object.values(item).some(value => value && String(value).trim() !== '');
+            });
+
+            if (!normalized || normalized.length === 0) {
+                resultDiv.innerHTML = '<div class="loading">보유 종목이 없습니다</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>종목코드</th>
+                            <th>종목명</th>
+                            <th>현재가</th>
+                            <th>보유수량</th>
+                            <th>매입단가</th>
+                            <th>평가금액</th>
+                            <th>평가손익</th>
+                            <th>수익률</th>
+                            <th>매수비중</th>
+                            <th>평가비중</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            normalized.forEach(item => {
+                const profitClass = getProfitClass(item.prft_rt);
+                html += `
+                    <tr>
+                        <td>${item.stk_cd || '-'}</td>
+                        <td>${item.stk_nm || '-'}</td>
+                        <td>${formatNumber(item.cur_prc)}</td>
+                        <td>${formatNumber(item.rmnd_qty)}</td>
+                        <td>${formatNumber(item.buy_uv)}</td>
+                        <td>${formatAmount(item.evlt_amt)}</td>
+                        <td class="${profitClass}">${formatAmount(item.evltv_prft)}</td>
+                        <td class="${profitClass}">${item.prft_rt || '-'}%</td>
+                        <td>${item.buy_wght || '-'}%</td>
+                        <td>${item.evlt_wght || '-'}%</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            resultDiv.innerHTML = html;
+        }
+
+        // Enter 키로 조회
+        document.getElementById('qryDate').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                fetchData();
+            }
+        });
+    </script>
+</body>
+</html>

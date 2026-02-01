@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>조건검색 (ka10171 + ka10172)</title>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #1a1a2e;
+            color: #eee;
+        }
+        h1 {
+            color: #00d4ff;
+            border-bottom: 2px solid #00d4ff;
+            padding-bottom: 10px;
+        }
+        .section {
+            background-color: #16213e;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .section h2 {
+            color: #00d4ff;
+            margin-top: 0;
+        }
+        button {
+            background-color: #00d4ff;
+            color: #1a1a2e;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #00a8cc;
+        }
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .status.connected {
+            background-color: #2ed573;
+            color: #1a1a2e;
+        }
+        .status.disconnected {
+            background-color: #ff4757;
+            color: white;
+        }
+        .status.connecting {
+            background-color: #ffa502;
+            color: #1a1a2e;
+        }
+        #log {
+            background-color: #0f0f23;
+            border: 1px solid #333;
+            border-radius: 5px;
+            padding: 15px;
+            height: 260px;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-bottom: 1px solid #333;
+        }
+        .log-entry.send {
+            color: #00d4ff;
+        }
+        .log-entry.receive {
+            color: #2ed573;
+        }
+        .log-entry.error {
+            color: #ff4757;
+        }
+        .log-entry.info {
+            color: #ffa502;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #333;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #0f3460;
+            color: #00d4ff;
+        }
+        tr:nth-child(even) {
+            background-color: #1a1a2e;
+        }
+        .loading {
+            text-align: center;
+            color: #888;
+            padding: 30px;
+        }
+        .error {
+            background-color: #ff475733;
+            border: 1px solid #ff4757;
+            border-radius: 5px;
+            padding: 15px;
+            color: #ff6b7a;
+        }
+        tr.clickable {
+            cursor: pointer;
+        }
+        tr.clickable:hover {
+            background-color: #0f3460 !important;
+        }
+        tr.selected {
+            background-color: #00d4ff33 !important;
+        }
+        .price-up {
+            color: #ff4757;
+        }
+        .price-down {
+            color: #2ed573;
+        }
+        .price-same {
+            color: #888;
+        }
+        .stock-count {
+            color: #00d4ff;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        .selected-condition {
+            background-color: #0f3460;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            color: #00d4ff;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔎 조건검색 (ka10171 + ka10172)</h1>
+
+    <div class="section">
+        <h2>연결/조회</h2>
+        <button id="btnConnect" onclick="connectWebSocket()">연결</button>
+        <button id="btnRequest" onclick="requestConditionList()" disabled>목록조회</button>
+        <button id="btnDisconnect" onclick="disconnectWebSocket()" disabled>연결 해제</button>
+        <div id="status" class="status disconnected">연결 안됨</div>
+    </div>
+
+    <div class="section">
+        <h2>조건검색식 목록</h2>
+        <div id="result">
+            <div class="loading">연결 후 목록조회 버튼을 클릭하세요</div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>종목 리스트 (ka10172)</h2>
+        <div id="selectedCondition"></div>
+        <div id="stockResult">
+            <div class="loading">조건검색식을 클릭하면 종목이 표시됩니다</div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>로그</h2>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        const HOST = 'https://api.kiwoom.com'; // 토큰 발급용
+        const WS_URL = 'wss://api.kiwoom.com:10000/api/dostk/websocket';
+        const APP_KEY = 'S0pnAkH0NIhvkRqlSbTa2j0y42ikEw6x26UKpAoZouQ';
+        const SECRET_KEY = 'h6wV7B6PJeDa_hv7HFuKbtvaOzwIKU-gtoQXEzyxm68';
+
+        let ws = null;
+        let accessToken = null;
+        let authOk = false;
+        let authPending = false;
+        let selectedCondition = null; // 선택된 조건검색식
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function updateStatus(status, text) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${status}`;
+            statusDiv.textContent = text;
+        }
+
+        async function getAccessToken() {
+            const url = HOST + '/oauth2/token';
+            const body = {
+                'grant_type': 'client_credentials',
+                'appkey': APP_KEY,
+                'secretkey': SECRET_KEY,
+            };
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+                body: JSON.stringify(body)
+            });
+            const data = await response.json();
+            if (data.return_code !== 0 || !data.token) {
+                throw new Error(data.return_msg || '토큰 발급 실패');
+            }
+            return data.token;
+        }
+
+        async function connectWebSocket() {
+            if (ws) {
+                log('이미 연결되어 있습니다', 'info');
+                return;
+            }
+            updateStatus('connecting', '연결 중...');
+            document.getElementById('btnConnect').disabled = true;
+
+            try {
+                accessToken = await getAccessToken();
+                log('토큰 발급 성공', 'info');
+            } catch (error) {
+                log(`토큰 발급 실패: ${error.message}`, 'error');
+                updateStatus('disconnected', '연결 안됨');
+                document.getElementById('btnConnect').disabled = false;
+                return;
+            }
+
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = function() {
+                log('WebSocket 연결 성공', 'info');
+                updateStatus('connected', '연결됨');
+                document.getElementById('btnRequest').disabled = true;
+                document.getElementById('btnDisconnect').disabled = false;
+                sendAuthMessage();
+            };
+
+            ws.onmessage = function(event) {
+                log(`수신: ${event.data}`, 'receive');
+                try {
+                    const data = JSON.parse(event.data);
+                    handleMessage(data);
+                } catch (error) {
+                    log(`JSON 파싱 실패: ${error.message}`, 'error');
+                }
+            };
+
+            ws.onerror = function() {
+                log('WebSocket 오류 발생', 'error');
+                updateStatus('disconnected', '오류 발생');
+            };
+
+            ws.onclose = function(event) {
+                log(`WebSocket 연결 종료: code=${event.code}, reason=${event.reason}`, 'info');
+                updateStatus('disconnected', '연결 종료');
+                document.getElementById('btnConnect').disabled = false;
+                document.getElementById('btnRequest').disabled = true;
+                document.getElementById('btnDisconnect').disabled = true;
+                authOk = false;
+                authPending = false;
+                ws = null;
+            };
+        }
+
+        function sendAuthMessage() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('WebSocket이 연결되어 있지 않습니다', 'error');
+                return;
+            }
+            // 공식 샘플 형식: LOGIN 패킷
+            const loginPacket = {
+                trnm: 'LOGIN',
+                token: accessToken
+            };
+            authPending = true;
+            log(`로그인 패킷 전송: ${JSON.stringify(loginPacket)}`, 'send');
+            ws.send(JSON.stringify(loginPacket));
+        }
+
+        function requestConditionList() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('WebSocket이 연결되어 있지 않습니다', 'error');
+                return;
+            }
+
+            const msg = {
+                trnm: 'CNSRLST',
+                header: {
+                    'api-id': 'ka10171',
+                    authorization: `Bearer ${accessToken}`
+                },
+                body: {
+                    trnm: 'CNSRLST'
+                }
+            };
+
+            log(`조건검색 목록조회 요청: ${JSON.stringify(msg)}`, 'send');
+            ws.send(JSON.stringify(msg));
+        }
+
+        // ka10172: 조건검색 요청 일반
+        function requestConditionSearch(seq, name) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('WebSocket이 연결되어 있지 않습니다', 'error');
+                return;
+            }
+
+            selectedCondition = { seq, name };
+            document.getElementById('selectedCondition').innerHTML =
+                `<div class="selected-condition">선택된 조건: [${seq}] ${name}</div>`;
+            document.getElementById('stockResult').innerHTML =
+                '<div class="loading">종목 조회 중...</div>';
+
+            // 공식 문서 Request Example 형식
+            const msg = {
+                trnm: 'CNSRREQ',
+                seq: seq.toString().trim(),
+                search_type: '0',
+                stex_tp: 'K',
+                cont_yn: 'N',
+                next_key: ''
+            };
+
+            log(`조건검색 요청 (ka10172): ${JSON.stringify(msg)}`, 'send');
+            ws.send(JSON.stringify(msg));
+        }
+
+        function handleMessage(data) {
+            // PING 메시지는 그대로 응답 (공식 샘플 방식)
+            if (data.trnm === 'PING') {
+                ws.send(JSON.stringify(data));
+                return;
+            }
+
+            // LOGIN 응답 처리
+            if (data.trnm === 'LOGIN') {
+                if (data.return_code !== 0) {
+                    log(`로그인 실패: ${data.return_msg}`, 'error');
+                    renderError(data.return_msg || '로그인 실패');
+                    return;
+                }
+                authOk = true;
+                authPending = false;
+                document.getElementById('btnRequest').disabled = false;
+                log('로그인 성공', 'info');
+                return;
+            }
+
+            // 조건검색 목록 응답 (CNSRLST)
+            if (data.trnm === 'CNSRLST') {
+                if (data.return_code && String(data.return_code) !== '0') {
+                    renderError(data.return_msg || '오류');
+                    return;
+                }
+                if (data.data) {
+                    renderConditionTable(data.data);
+                }
+                return;
+            }
+
+            // 조건검색 종목 응답 (CNSRREQ)
+            if (data.trnm === 'CNSRREQ') {
+                if (data.return_code && String(data.return_code) !== '0') {
+                    renderStockError(data.return_msg || '오류');
+                    return;
+                }
+                if (data.data) {
+                    renderStockList(data.data);
+                }
+                return;
+            }
+
+            // 기타 오류 처리
+            if (data.return_code && String(data.return_code) !== '0') {
+                renderError(data.return_msg || '오류');
+                return;
+            }
+        }
+
+        function renderError(message) {
+            const result = document.getElementById('result');
+            result.innerHTML = `<div class="error">${message}</div>`;
+        }
+
+        function renderStockError(message) {
+            const result = document.getElementById('stockResult');
+            result.innerHTML = `<div class="error">${message}</div>`;
+        }
+
+        // 조건검색식 목록 테이블 (클릭 가능)
+        function renderConditionTable(list) {
+            const result = document.getElementById('result');
+            const rows = [];
+
+            if (Array.isArray(list)) {
+                list.forEach(item => {
+                    if (Array.isArray(item)) {
+                        rows.push({ seq: item[0], name: item[1] });
+                    } else if (item && typeof item === 'object') {
+                        rows.push({ seq: item.seq, name: item.name });
+                    }
+                });
+            }
+
+            if (rows.length === 0) {
+                result.innerHTML = '<div class="loading">조건검색식이 없습니다</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>일련번호</th>
+                            <th>조건검색식 명</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            rows.forEach(row => {
+                const seq = row.seq || '';
+                const name = row.name || '';
+                html += `
+                    <tr class="clickable" onclick="requestConditionSearch('${seq}', '${name.replace(/'/g, "\\'")}')">
+                        <td>${seq || '-'}</td>
+                        <td>${name || '-'}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            result.innerHTML = html;
+        }
+
+        // 종목 리스트 테이블
+        function renderStockList(list) {
+            const result = document.getElementById('stockResult');
+
+            if (!Array.isArray(list) || list.length === 0) {
+                result.innerHTML = '<div class="loading">조건에 맞는 종목이 없습니다</div>';
+                return;
+            }
+
+            let html = `<div class="stock-count">총 ${list.length}개 종목</div>`;
+            html += `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>종목코드</th>
+                            <th>종목명</th>
+                            <th>현재가</th>
+                            <th>전일대비</th>
+                            <th>등락률</th>
+                            <th>거래량</th>
+                            <th>시가</th>
+                            <th>고가</th>
+                            <th>저가</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            list.forEach(stock => {
+                const code = stock['9001'] || '';       // 종목코드
+                const name = stock['302'] || '';        // 종목명
+                const price = formatPrice(stock['10']); // 현재가
+                const sign = stock['25'] || '3';        // 전일대비기호
+                const change = formatPrice(stock['11']); // 전일대비
+                const changeRate = formatRate(stock['12']); // 등락률
+                const volume = formatVolume(stock['13']); // 누적거래량
+                const open = formatPrice(stock['16']);  // 시가
+                const high = formatPrice(stock['17']);  // 고가
+                const low = formatPrice(stock['18']);   // 저가
+
+                const priceClass = getPriceClass(sign);
+                const signSymbol = getSignSymbol(sign);
+
+                html += `
+                    <tr>
+                        <td>${code.replace('A', '')}</td>
+                        <td>${name}</td>
+                        <td class="${priceClass}">${price}</td>
+                        <td class="${priceClass}">${signSymbol}${change}</td>
+                        <td class="${priceClass}">${changeRate}%</td>
+                        <td>${volume}</td>
+                        <td>${open}</td>
+                        <td>${high}</td>
+                        <td>${low}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            result.innerHTML = html;
+        }
+
+        // 가격 포맷팅 (앞의 0 제거)
+        function formatPrice(val) {
+            if (!val) return '-';
+            const num = parseInt(val.replace(/^0+/, '') || '0', 10);
+            return num.toLocaleString();
+        }
+
+        // 등락률 포맷팅
+        function formatRate(val) {
+            if (!val) return '0.00';
+            const num = parseInt(val.replace(/^0+/, '').replace(/^-0+/, '-') || '0', 10);
+            return (num / 100).toFixed(2);
+        }
+
+        // 거래량 포맷팅
+        function formatVolume(val) {
+            if (!val) return '-';
+            const num = parseInt(val.replace(/^0+/, '') || '0', 10);
+            return num.toLocaleString();
+        }
+
+        // 전일대비기호에 따른 CSS 클래스
+        function getPriceClass(sign) {
+            // 1: 상한, 2: 상승, 5: 하한, 6: 하락, 3: 보합
+            if (sign === '1' || sign === '2') return 'price-up';
+            if (sign === '5' || sign === '6') return 'price-down';
+            return 'price-same';
+        }
+
+        // 전일대비기호에 따른 기호
+        function getSignSymbol(sign) {
+            if (sign === '1' || sign === '2') return '+';
+            if (sign === '5' || sign === '6') return '-';
+            return '';
+        }
+
+        function disconnectWebSocket() {
+            if (ws) {
+                log('WebSocket 연결 해제 요청...', 'send');
+                ws.close();
+            }
+        }
+    </script>
+</body>
+</html>

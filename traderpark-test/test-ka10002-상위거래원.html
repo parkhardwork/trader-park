@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>주식거래원 + 평균가 계산 (ka10002/ka10003)</title>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #1a1a2e;
+            color: #eee;
+        }
+        h1 {
+            color: #00d4ff;
+            border-bottom: 2px solid #00d4ff;
+            padding-bottom: 10px;
+        }
+        .section {
+            background-color: #16213e;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .section h2 {
+            color: #00d4ff;
+            margin-top: 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #00d4ff;
+        }
+        input {
+            padding: 10px;
+            border: 1px solid #333;
+            border-radius: 5px;
+            background-color: #0f0f23;
+            color: #eee;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button {
+            background-color: #00d4ff;
+            color: #1a1a2e;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #00a8cc;
+        }
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .summary-card {
+            background-color: #0f3460;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+        .summary-card .label {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 5px;
+        }
+        .summary-card .value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #00d4ff;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #333;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #0f3460;
+            color: #00d4ff;
+        }
+        tr:nth-child(even) {
+            background-color: #1a1a2e;
+        }
+        tr:hover {
+            background-color: #0f3460;
+        }
+        #result {
+            min-height: 100px;
+        }
+        .loading {
+            text-align: center;
+            color: #888;
+            padding: 40px;
+        }
+        .error {
+            background-color: #ff475733;
+            border: 1px solid #ff4757;
+            border-radius: 5px;
+            padding: 15px;
+            color: #ff6b7a;
+        }
+    </style>
+</head>
+<body>
+    <h1>🏦 주식거래원 + 평균가 계산 (ka10002/ka10003)</h1>
+
+    <div class="section">
+        <h2>조회 설정</h2>
+        <div>
+            <label for="stkCd">종목코드</label>
+            <input type="text" id="stkCd" placeholder="005930" maxlength="20" value="005930">
+            <button onclick="fetchData()">조회</button>
+        </div>
+    </div>
+
+    <div class="section" id="summarySection" style="display: none;">
+        <h2>📌 요약</h2>
+        <div class="summary-grid" id="summaryGrid"></div>
+    </div>
+
+    <div class="section">
+        <h2>📋 거래원 정보</h2>
+        <div id="brokerResult">
+            <div class="loading">조회 버튼을 클릭하세요</div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>🏅 매수+매도 합산 순위</h2>
+        <div id="mergedResult">
+            <div class="loading">조회 버튼을 클릭하세요</div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>📈 체결 기반 평균가</h2>
+        <div id="avgResult">
+            <div class="loading">조회 버튼을 클릭하세요</div>
+        </div>
+    </div>
+
+    <script>
+        const HOST = 'https://api.kiwoom.com'; // 실전투자
+        const APP_KEY = 'S0pnAkH0NIhvkRqlSbTa2j0y42ikEw6x26UKpAoZouQ';
+        const SECRET_KEY = 'h6wV7B6PJeDa_hv7HFuKbtvaOzwIKU-gtoQXEzyxm68';
+
+        function toNumber(value) {
+            if (value === null || value === undefined) return NaN;
+            let s = String(value).trim();
+            if (!s) return NaN;
+            s = s.replace(/,/g, '');
+            s = s.replace(/^\+/, '');
+            s = s.replace(/^--/, '-');
+            s = s.replace(/[^0-9.-]/g, '');
+            if (!s || s === '-' || s === '.') return NaN;
+            return Number(s);
+        }
+
+        function formatNumber(num) {
+            if (num === null || num === undefined || num === '') return '-';
+            const n = toNumber(num);
+            if (isNaN(n)) return String(num);
+            return n.toLocaleString('ko-KR');
+        }
+
+        function formatAmount(num) {
+            if (num === null || num === undefined || num === '') return '-';
+            const n = toNumber(num);
+            if (isNaN(n)) return String(num);
+            if (Math.abs(n) >= 100000000) {
+                return (n / 100000000).toFixed(2) + '억';
+            }
+            return n.toLocaleString('ko-KR');
+        }
+
+        // 접근토큰 발급
+        async function getAccessToken() {
+            const url = HOST + '/oauth2/token';
+            const body = {
+                'grant_type': 'client_credentials',
+                'appkey': APP_KEY,
+                'secretkey': SECRET_KEY,
+            };
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+                body: JSON.stringify(body)
+            });
+
+            const data = await response.json();
+            console.log('토큰 발급:', data);
+            return data.token;
+        }
+
+        // 주식거래원요청 (ka10002)
+        async function fn_ka10002(accessToken, stkCd) {
+            const url = HOST + '/api/dostk/stkinfo';
+            const headers = {
+                'Content-Type': 'application/json;charset=UTF-8',
+                'authorization': `Bearer ${accessToken}`,
+                'api-id': 'ka10002',
+            };
+            const body = { 'stk_cd': stkCd };
+            console.log('거래원 요청:', { url, headers: { ...headers, authorization: 'Bearer ***' }, body });
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(body)
+            });
+            return response.json();
+        }
+
+        // 체결정보요청 (ka10003) - 평균가 계산용
+        async function fn_ka10003(accessToken, stkCd) {
+            const url = HOST + '/api/dostk/stkinfo';
+            const headers = {
+                'Content-Type': 'application/json;charset=UTF-8',
+                'authorization': `Bearer ${accessToken}`,
+                'api-id': 'ka10003',
+            };
+            const body = { 'stk_cd': stkCd };
+            console.log('체결 요청:', { url, headers: { ...headers, authorization: 'Bearer ***' }, body });
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(body)
+            });
+            return response.json();
+        }
+
+        async function fetchData() {
+            const stkCd = document.getElementById('stkCd').value.trim();
+            const brokerResult = document.getElementById('brokerResult');
+            const mergedResult = document.getElementById('mergedResult');
+            const avgResult = document.getElementById('avgResult');
+            const summarySection = document.getElementById('summarySection');
+
+            if (!stkCd) {
+                alert('종목코드를 입력하세요');
+                return;
+            }
+
+            brokerResult.innerHTML = '<div class="loading">조회 중...</div>';
+            mergedResult.innerHTML = '<div class="loading">조회 중...</div>';
+            avgResult.innerHTML = '<div class="loading">조회 중...</div>';
+            summarySection.style.display = 'none';
+
+            try {
+                const accessToken = await getAccessToken();
+                if (!accessToken) {
+                    throw new Error('토큰 발급 실패');
+                }
+
+                const [brokerData, tradeData] = await Promise.all([
+                    fn_ka10002(accessToken, stkCd),
+                    fn_ka10003(accessToken, stkCd),
+                ]);
+
+                if (brokerData.return_code !== 0) {
+                    throw new Error(`거래원 API 오류: ${brokerData.return_msg || '알 수 없는 오류'}`);
+                }
+                if (tradeData.return_code !== 0) {
+                    throw new Error(`체결 API 오류: ${tradeData.return_msg || '알 수 없는 오류'}`);
+                }
+
+                renderSummary(brokerData, tradeData);
+                const estimatePrice = getEstimatePrice(brokerData);
+                renderBrokers(brokerData, estimatePrice);
+                renderMergedRanks(brokerData, estimatePrice);
+                renderAverage(tradeData);
+            } catch (error) {
+                console.error('조회 실패:', error);
+                brokerResult.innerHTML = `<div class="error">조회 실패: ${error.message}</div>`;
+                mergedResult.innerHTML = `<div class="error">조회 실패: ${error.message}</div>`;
+                avgResult.innerHTML = `<div class="error">조회 실패: ${error.message}</div>`;
+            }
+        }
+
+        function getEstimatePrice(brokerData) {
+            const curPrice = toNumber(brokerData.cur_prc);
+            if (!isNaN(curPrice) && curPrice > 0) return { value: curPrice, label: '현재가' };
+            const basePrice = toNumber(brokerData.base_pric);
+            if (!isNaN(basePrice) && basePrice > 0) return { value: basePrice, label: '기준가' };
+            return { value: null, label: '기준가' };
+        }
+
+        function renderSummary(brokerData, tradeData) {
+            const summarySection = document.getElementById('summarySection');
+            const summaryGrid = document.getElementById('summaryGrid');
+
+            const avgPrice = calcAveragePrice(tradeData);
+            const estimatePrice = getEstimatePrice(brokerData);
+
+            summaryGrid.innerHTML = `
+                <div class="summary-card">
+                    <div class="label">종목코드</div>
+                    <div class="value">${brokerData.stk_cd || '-'}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">종목명</div>
+                    <div class="value">${brokerData.stk_nm || '-'}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">현재가</div>
+                    <div class="value">${formatNumber(brokerData.cur_prc)}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">기준가</div>
+                    <div class="value">${formatNumber(brokerData.base_pric)}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">전일대비</div>
+                    <div class="value">${formatNumber(brokerData.pred_pre)}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">등락율</div>
+                    <div class="value">${brokerData.flu_rt || '-'}%</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">체결 누적 평균가</div>
+                    <div class="value">${avgPrice ? formatNumber(avgPrice.toFixed(2)) : '-'}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">추정금액 기준</div>
+                    <div class="value">${estimatePrice.value ? `${estimatePrice.label} ${formatNumber(estimatePrice.value)}` : '-'}</div>
+                </div>
+            `;
+
+            summarySection.style.display = 'block';
+        }
+
+        function renderBrokers(data, estimatePrice) {
+            const brokerResult = document.getElementById('brokerResult');
+
+            const sellRows = [];
+            const buyRows = [];
+            for (let i = 1; i <= 5; i += 1) {
+                sellRows.push({
+                    name: data[`sel_trde_ori_nm_${i}`] || '',
+                    code: data[`sel_trde_ori_${i}`] || '',
+                    qty: data[`sel_trde_qty_${i}`] || '',
+                });
+                buyRows.push({
+                    name: data[`buy_trde_ori_nm_${i}`] || '',
+                    code: data[`buy_trde_ori_${i}`] || '',
+                    qty: data[`buy_trde_qty_${i}`] || '',
+                });
+            }
+
+            const renderTable = (title, rows) => {
+                const hasData = rows.some(row => row.name || row.code || row.qty);
+                if (!hasData) {
+                    return `<h3>${title}</h3><div class="loading">데이터 없음</div>`;
+                }
+                const canEstimate = estimatePrice && !isNaN(estimatePrice.value);
+                const estimateLabel = estimatePrice && estimatePrice.label ? estimatePrice.label : '현재가';
+                let html = `
+                    <h3>${title}</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>거래원명</th>
+                                <th>코드</th>
+                                <th>거래량</th>
+                                <th>추정금액(${estimateLabel})</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                rows.forEach(row => {
+                    const qty = toNumber(row.qty);
+                    const estAmt = canEstimate && !isNaN(qty) ? qty * estimatePrice.value : null;
+                    html += `
+                        <tr>
+                            <td>${row.name || '-'}</td>
+                            <td>${row.code || '-'}</td>
+                            <td>${formatNumber(row.qty)}</td>
+                            <td>${estAmt !== null ? formatAmount(estAmt) : '-'}</td>
+                        </tr>
+                    `;
+                });
+                html += '</tbody></table>';
+                return html;
+            };
+
+            brokerResult.innerHTML = `
+                ${renderTable('매도 거래원 TOP5', sellRows)}
+                ${renderTable('매수 거래원 TOP5', buyRows)}
+            `;
+        }
+
+        function renderMergedRanks(data, estimatePrice) {
+            const mergedResult = document.getElementById('mergedResult');
+            const map = new Map();
+            const rows = [];
+
+            for (let i = 1; i <= 5; i += 1) {
+                rows.push({
+                    name: data[`sel_trde_ori_nm_${i}`] || '',
+                    code: data[`sel_trde_ori_${i}`] || '',
+                    qty: data[`sel_trde_qty_${i}`] || '',
+                    type: 'sell',
+                });
+                rows.push({
+                    name: data[`buy_trde_ori_nm_${i}`] || '',
+                    code: data[`buy_trde_ori_${i}`] || '',
+                    qty: data[`buy_trde_qty_${i}`] || '',
+                    type: 'buy',
+                });
+            }
+
+            rows.forEach(row => {
+                if (!row.name && !row.code) return;
+                const key = `${row.code || 'NO_CODE'}::${row.name || 'NO_NAME'}`;
+                const qty = toNumber(row.qty);
+                const acc = map.get(key) || { name: row.name, code: row.code, buy: 0, sell: 0 };
+                if (!isNaN(qty)) {
+                    if (row.type === 'buy') acc.buy += qty;
+                    if (row.type === 'sell') acc.sell += qty;
+                }
+                map.set(key, acc);
+            });
+
+            const merged = Array.from(map.values()).map(item => ({
+                ...item,
+                total: item.buy + item.sell,
+            })).sort((a, b) => b.total - a.total);
+
+            if (merged.length === 0) {
+                mergedResult.innerHTML = '<div class="loading">데이터 없음</div>';
+                return;
+            }
+
+            const canEstimate = estimatePrice && !isNaN(estimatePrice.value);
+            const estimateLabel = estimatePrice && estimatePrice.label ? estimatePrice.label : '현재가';
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>순위</th>
+                            <th>거래원명</th>
+                            <th>코드</th>
+                            <th>매수합</th>
+                            <th>매도합</th>
+                            <th>합계</th>
+                            <th>추정금액(${estimateLabel})</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            merged.forEach((item, index) => {
+                const estAmt = canEstimate ? item.total * estimatePrice.value : null;
+                html += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${item.name || '-'}</td>
+                        <td>${item.code || '-'}</td>
+                        <td>${formatNumber(item.buy)}</td>
+                        <td>${formatNumber(item.sell)}</td>
+                        <td>${formatNumber(item.total)}</td>
+                        <td>${estAmt !== null ? formatAmount(estAmt) : '-'}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            mergedResult.innerHTML = html;
+        }
+
+        function calcAveragePrice(tradeData) {
+            const list = tradeData.cntr_infr || [];
+            if (!Array.isArray(list) || list.length === 0) return null;
+            const latest = list[0];
+            const accQty = toNumber(latest.acc_trde_qty);
+            const accAmt = toNumber(latest.acc_trde_prica);
+            if (!accQty || !accAmt || isNaN(accQty) || isNaN(accAmt)) return null;
+            if (accQty <= 0 || accAmt <= 0) return null;
+            return accAmt / accQty;
+        }
+
+        function renderAverage(tradeData) {
+            const avgResult = document.getElementById('avgResult');
+            const list = tradeData.cntr_infr || [];
+            if (!Array.isArray(list) || list.length === 0) {
+                avgResult.innerHTML = '<div class="loading">체결 데이터가 없습니다</div>';
+                return;
+            }
+
+            const avgPrice = calcAveragePrice(tradeData);
+            let html = `
+                <div class="summary-grid">
+                    <div class="summary-card">
+                        <div class="label">체결 누적 평균가</div>
+                        <div class="value">${avgPrice ? formatNumber(avgPrice.toFixed(2)) : '-'}</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="label">누적거래대금</div>
+                        <div class="value">${formatAmount(list[0].acc_trde_prica)}</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="label">누적거래량</div>
+                        <div class="value">${formatNumber(list[0].acc_trde_qty)}</div>
+                    </div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>시간</th>
+                            <th>현재가</th>
+                            <th>전일대비</th>
+                            <th>대비율</th>
+                            <th>체결거래량</th>
+                            <th>누적거래량</th>
+                            <th>누적거래대금</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            list.slice(0, 20).forEach(item => {
+                html += `
+                    <tr>
+                        <td>${item.tm || '-'}</td>
+                        <td>${formatNumber(item.cur_prc)}</td>
+                        <td>${formatNumber(item.pred_pre)}</td>
+                        <td>${item.pre_rt || '-'}</td>
+                        <td>${formatNumber(item.cntr_trde_qty)}</td>
+                        <td>${formatNumber(item.acc_trde_qty)}</td>
+                        <td>${formatAmount(item.acc_trde_prica)}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            avgResult.innerHTML = html;
+        }
+
+        document.getElementById('stkCd').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                fetchData();
+            }
+        });
+    </script>
+</body>
+</html>
