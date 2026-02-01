@@ -19,7 +19,7 @@ import java.util.List;
  */
 @Configuration
 @EnableConfigurationProperties(CorsProps.class)
-public class CorsConfig {
+public class SecurityConfig {
 
     @Bean
     public FilterRegistrationBean<CorsFilter> corsFilter(CorsProps corsProps) {
