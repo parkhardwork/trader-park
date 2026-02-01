@@ -1,3 +1,20 @@
 spring:
   application:
     name: tradierpark
+
+# Jasypt 암호화 설정
+jasypt:
+  encryptor:
+    password: ${JASYPT_ENCRYPTOR_PASSWORD:defaultPassword}
+    bean: jasyptStringEncryptor
+
+# 키움증권 REST API 설정
+kiwoom:
+  api-url: https://api.kiwoom.com  # 실전투자
+  # api-url: https://mockapi.kiwoom.com  # 모의투자
+  app-key: ENC(cwMC5SnxOqX4taSeWOSil8nCql/63sn8fr+cH0QLpmKcagMG6FmkfP4qO0rM9KF33f16NAL06u4=)
+  secret-key: ENC(xVX0Lr3xzK9gMuWlNrpislyzreUnDZ9wleAFMD4d4xXhADcnxNXbz8R1RHG59CMY9QPn0V8NW/A=)
+
+logging:
+  level:
+    com.hidvid.tradierpark.infra.broker: DEBUG
