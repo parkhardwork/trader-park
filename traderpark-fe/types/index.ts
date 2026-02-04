@@ -110,3 +110,51 @@ export interface PortfolioSummary {
   totalProfitLossRate: number;
   stockCount: number;
 }
+
+// 일별 잔고 수익률 (키움 API)
+export interface DailyBalance {
+  date: string;
+  totalBuyAmount: string;
+  totalEvalAmount: string;
+  totalEvalProfit: string;
+  totalProfitRate: string;
+  depositBalance: string;
+  dayStockAsset: string;
+  cashWeight: string;
+  stocks: StockBalance[];
+}
+
+export interface StockBalance {
+  stockCode: string;
+  stockName: string;
+  currentPrice: string;
+  quantity: string;
+  buyPrice: string;
+  evalAmount: string;
+  evalProfit: string;
+  profitRate: string;
+  buyWeight: string;
+  evalWeight: string;
+}
+
+// 일봉 차트 아이템
+export interface DailyChartItem {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  tradeAmount: number;
+  change: string;
+  changeSign: string;
+}
+
+// 일봉 차트 조회 결과
+export interface DailyChart {
+  stockCode: string;
+  highPrice: number;
+  currentPrice: number;
+  dropRate: number;
+  items: DailyChartItem[];
+}

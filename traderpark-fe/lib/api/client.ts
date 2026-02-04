@@ -7,7 +7,6 @@ export const apiClient = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  withCredentials: true,
 });
 
 // 요청 인터셉터
@@ -36,9 +35,7 @@ apiClient.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
-          withCredentials: true,
-        });
+        const response = await axios.post(`${API_BASE_URL}/auth/refresh`);
 
         const { accessToken } = response.data;
         localStorage.setItem("accessToken", accessToken);

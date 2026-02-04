@@ -1,5 +1,5 @@
 import apiClient from "./client";
-import type { Stock, BrokerTrade, SearchCondition, SearchResult } from "@/types";
+import type { Stock, BrokerTrade, SearchCondition, SearchResult, DailyChart } from "@/types";
 
 // 종목 상세 조회
 export async function getStock(code: string): Promise<Stock> {
@@ -30,5 +30,12 @@ export async function getSearchConditions(): Promise<SearchCondition[]> {
 // 조건 검색 실행
 export async function executeSearchCondition(conditionId: number): Promise<SearchResult> {
   const response = await apiClient.get(`/conditions/${conditionId}/execute`);
+  return response.data;
+}
+
+// 일봉 차트 조회
+export async function getDailyChart(code: string, date?: string): Promise<DailyChart> {
+  const params = date ? { date } : {};
+  const response = await apiClient.get(`/stocks/${code}/daily-chart`, { params });
   return response.data;
 }

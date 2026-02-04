@@ -1,5 +1,5 @@
 import apiClient from "./client";
-import type { Portfolio, PortfolioSummary, WatchList, TradingStrategy, MarketIndex } from "@/types";
+import type { Portfolio, PortfolioSummary, WatchList, TradingStrategy, MarketIndex, DailyBalance } from "@/types";
 
 // 보유 종목 목록 조회
 export async function getPortfolio(): Promise<Portfolio[]> {
@@ -10,6 +10,13 @@ export async function getPortfolio(): Promise<Portfolio[]> {
 // 포트폴리오 요약 조회
 export async function getPortfolioSummary(): Promise<PortfolioSummary> {
   const response = await apiClient.get(`/portfolio/summary`);
+  return response.data;
+}
+
+// 일별 잔고 수익률 조회 (키움 API)
+export async function getDailyBalance(date?: string): Promise<DailyBalance> {
+  const params = date ? { date } : {};
+  const response = await apiClient.get(`/portfolio/daily-balance`, { params });
   return response.data;
 }
 

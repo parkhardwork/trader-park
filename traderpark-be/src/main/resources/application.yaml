@@ -8,7 +8,7 @@ app:
     allowed-origins:
       - "http://localhost:3000"    # Next.js 프론트엔드
       - "http://localhost:8080"    # 백엔드 (Swagger 등)
-    allow-credentials: true
+    allow-credentials: false
 
 # Jasypt 암호화 설정
 jasypt:
